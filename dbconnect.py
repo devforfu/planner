@@ -41,50 +41,55 @@ class UniversityDatabase:
             print(e)
         self.query = QSqlQuery(self.db)
 
-    def get_disciplines_for_group(self, group_id:str, semesters:tuple = None):
-        def get_disciplines_for_speciality(spec_id:int, course:int):
-            query_text = "select id, name from disciplines where speciality_id = {0} " \
-                         "and kurs = {1}".format(spec_id, course)
-            if semesters is not None:
-                query_text += " and semestr in {}".format(semesters)
-            q = QSqlQuery(query_text)
-            disciplines = []
-            while q.next():
-                disciplines.append((q.value(0), q.value(1)))
-            return disciplines
 
-        self.query.exec("select speciality_id, name, size, kurs from groups where id = {}".format(group_id))
+    def get_disciplines_for_speciality(self, spec_id:int, semesters:tuple = ()):
+        query_text = "select id, name from disciplines " \
+                     "where speciality_id = {}".format(spec_id)
+        if semesters:
+            query_text += " and semestr in {}".format(semesters + (0,))
+        q = QSqlQuery(query_text)
+        disciplines = []
+        while q.next():
+            disciplines.append((q.value(0), q.value(1)))
+        return disciplines
+
+
+    def get_disciplines_for_group(self, group_id:str, semesters:tuple = ()):
+        self.query.exec("select speciality_id, name, size "
+                        "from groups where id = {}".format(group_id))
         self.query.next()
-        spec_id, group_name, size, course = (self.query.value(x) for x in range(4))
-        return (Group(spec_id, group_name, size), get_disciplines_for_speciality(spec_id, course))
+        spec_id, group_name, size = (self.query.value(x) for x in range(3))
+        return (Group(spec_id, group_name, size),
+                self.get_disciplines_for_speciality(spec_id, semesters))
 
-    def get_disciplines_for_groups(self, ids:list, semesters:tuple = None):
+
+    def get_disciplines_for_groups(self, ids:list, semesters:tuple = ()):
         return dict([self.get_disciplines_for_group(id, semesters) for id in ids])
 
-    def get_teacher_hours(self, teacher_id, semesters:tuple = None):
+
+    def get_teacher_hours(self, teacher_id, semesters:tuple = ()):
         q = QSqlQuery(self.db)
-        q.exec("select id, firstname, middlename, lastname from teachers "
-                        "where id = {}".format(teacher_id))
-        q.next()
-        name = Teacher(*(q.value(x) for x in range(4)))
+        q.exec("select id, firstname, middlename, lastname "
+               "from teachers where id = {}".format(teacher_id))
+        name = q.next() and Teacher(*(q.value(x) for x in range(4)))
         query_text = "select e.id, e.type_id, d.name, e.hours from " \
-                     "(exercises e join disciplines d on e.discipline_id = d.id)" \
+                     "(exercises e join disciplines d on e.discipline_id = d.id) " \
                      "where teacher_id = {}".format(teacher_id)
-        if semesters is not None:
-            query_text += " and d.semestr in ({})".format(*semesters)
+        if semesters:
+            query_text += " and d.semestr in {}".format(semesters  + (0,))
         q.exec(query_text)
         discipline_hours = []
         while q.next():
             discipline_hours.append((Exercise(q.value(0), q.value(1), q.value(2)), q.value(3)))
         return (name, dict(discipline_hours))
 
-    def get_teachers_hours_for_institute(self, inst_id:int, semesters:tuple = None):
-        self.query.exec("select id, firstname, middlename, lastname from teachers where department_id in "
+
+    def get_teachers_hours_for_institute(self, inst_id:int, semesters:tuple = ()):
+        self.query.exec("select id from teachers where department_id in "
                         "(select id from departments where institute_id = {})".format(inst_id))
-        hours = []
         while self.query.next():
-            hours.append(self.get_teacher_hours(self.query.value(0), semesters))
-        return dict(hours)
+            yield self.get_teacher_hours(self.query.value(0), semesters)
+
 
     def get_rooms_in_building(self, building_id:int):
         self.query.exec("select id, name, process_type_id, size from rooms "
@@ -99,9 +104,8 @@ class UniversityDatabase:
 if __name__ == '__main__':
     import utils
     database = UniversityDatabase()
-    a = database.get_disciplines_for_groups([73, 74, 75, 76, 77, 78])
+    a = database.get_disciplines_for_groups([1,2,3,4,5,6])
     utils.print_dictionary(a)
-    c = database.get_teachers_hours_for_institute(187, (1,))
-    utils.print_dictionary(c)
-    for r in database.get_rooms_in_building(61):
-        print(r)
+    c = database.get_teachers_hours_for_institute(1, (3,))
+    utils.print_dictionary(dict(c))
+    print(list(database.get_rooms_in_building(4)))

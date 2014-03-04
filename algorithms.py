@@ -30,6 +30,9 @@ def first_unassigned_variable(csp):
     for v in csp.variables:
         if not v.isassigned(): return v
 
+def random_unassigned_variable(csp):
+    return random.choice([v for v in csp.variables if not v.isassigned()])
+
 def minimum_remaining_value(csp):
     pass
 
@@ -91,9 +94,6 @@ def argmin_conflicts(csp, var):
     return argmin(lambda x: csp.conflicts(var, x),
                   var.curr_domain, random.choice)
 
-def most_weight_variable(csp, vars):
-    return max(csp.weight_list().items(), key=itemgetter(1))[0]
-
 
 def min_conflicts(csp, max_steps=10000):
     def argmin_conflicts(var):
@@ -101,40 +101,16 @@ def min_conflicts(csp, max_steps=10000):
                       var.curr_domain, random.choice)
 
     # initial assignment (probably unfeasible)
-    for var in csp.variables:
-        var.assign(argmin_conflicts(var))
+    if len(csp.assignment) != len(csp.variables):
+        for var in csp.variables:
+            var.assign(argmin_conflicts(var))
     # local search
-    best_value = INFINITY
-    best_assignment = None
     for _ in range(max_steps):
         violations = csp.violation_list()
         if not violations: # all constrains satisfied
-            return {v.name:v.curr_value for v in csp.variables}
+            print('done')
+            return csp.variables
         var = random.choice(violations)
         val = argmin_conflicts(var)
         var.assign(val)
-    return best_assignment
-
-
-def iterative_forward_search(csp, max_steps=5000):
-    def argmin_conflicts(var):
-        return argmin(lambda x: csp.conflicts(var, x),
-                      var.curr_domain, random.choice)
-
-    def most_weight_variable(vars):
-        from operator import itemgetter
-        return max(csp.weight_list().items(), key=itemgetter(1))[0]
-
-    best_value, best_assignment = INFINITY, csp.infer_assignment()
-    for _ in range(max_steps):
-        X = most_weight_variable(csp.variables)
-        a = argmin_conflicts(X)
-        X.assign(a)
-        violations = csp.violation_list()
-        if not violations:
-            estimate = csp.preferences()
-            if estimate < best_value:
-                print(estimate)
-                best_value, best_assignment = estimate, csp.infer_assignment()
-        for Y in violations: Y.unassign()
-    return best_assignment
+    return None

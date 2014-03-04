@@ -1,10 +1,11 @@
 import itertools
 
 INFINITY = 99999
+WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
 def print_dictionary(dict):
     if not dict: print('Empty'); return
-    for key in sorted(dict.keys()):
+    for key in sorted(dict.keys(), key=hash, reverse=True):
         acc = ''
         if isinstance(dict[key], list):
             for item in dict[key]:
@@ -30,7 +31,9 @@ def argmax(function, X, tiesolve=None):
     return argmin(lambda x: -function(x), X, tiesolve)
 
 
-def bounded_sum(seq, K=INFINITY):
+def bounded_sum(*args, K=INFINITY):
     """ Вычисляет сумму, ограниченную диапазоном [0; K] """
-    acc = sum(map(abs, seq))
+    acc = 0
+    for seq in args:
+        acc += sum(map(abs, seq))
     return acc if acc < K else K

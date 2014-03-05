@@ -32,6 +32,15 @@ def get_room_domains():
 
 
 class Variable:
+    ''' Базовый класс для представления переменной в задачах удовлетворения ограничений
+        (CSP - constraint satisfaction problems). Предоставляет интерфейс, используемый в
+        дальнейшем во всех алгоритмах поиска и не используется непосредственно.
+
+            init_domain - возвращает исходное множество допустимых значений (readonly)
+            curr_domain - возвращает текущее множество допустимых значений
+            neighbors   - список переменных, которые связаны с данной ограничениями
+            curr_value  - текущее значение переменной
+    '''
     def __init__(self, domain:list, neighbors = None, name = None):
         self.__name = name
         self.__init_domain = domain
@@ -57,9 +66,6 @@ class Variable:
     def isassigned(self):
         return self.curr_value is not None
 
-    def isunassigned(self):
-        return self.curr_value is None
-
     def __eq__(self, other):
         return self.curr_value == other.curr_value
 
@@ -71,16 +77,22 @@ class Variable:
 
 
 class CSP:
+    ''' Базовый класс для представления задач удовлетворения ограничений, не используется
+        непосредственно. Для решения конкретных задач необходимо произвести наследование от
+        данного класса и определить все необходимые методы.
+
+            variables  - список всех переменных, используемых в задаче
+            assignment - список переменных, которым присвоено какое-либо значение
+    '''
     def __init__(self):
         self.__variables = []
-        self.nassigned = 0
 
     @property
     def variables(self):
         return self.__variables
 
     @variables.setter
-    def variables(self, val):
+    def variables(self, val:list):
         self.__variables = val
 
     @property
@@ -88,31 +100,50 @@ class CSP:
         return [v for v in self.variables if v.isassigned()]
 
     def add_variable(self, var: Variable):
+        ''' Добавляет переменную к списку '''
         self.__variables.append(var)
 
     def setup_constraints(self):
+        ''' Реализуется, в случае необходимости, при решении конкретных задач '''
         pass
 
     def infer_assignment(self):
+        ''' Возвращает словарь из переменных и их текущих доменов '''
         return dict((str(Xi), Xi.curr_domain) for Xi in self.variables)
 
     def constraints(self, var1, value1, var2, value2):
+        ''' Производит проверку выполнения огрничений, связывающих переменные var 1 и var2,
+            если им будут присвоены значения value1 и value2 соответственно. Предполагается,
+            что все строгие ограничения, используемые в задаче, являются бинарными.
+        '''
         return var1 == var2 or value1 != value2
 
     def preferences(self):
-        return 0 if not self.violation_list() else INFINITY
+        ''' Возвращает вес текущего решения. По умолчанию считается, что присутствуют только
+            строгие ограничения и если ни одно из них не нарушено, то вес решения принимается
+            равным нулю, иначе - бесконечности.
+        '''
+        return (0 if not self.violation_list()
+                     and len(self.assignment) == len(self.variables)
+                  else INFINITY)
 
-    def restoreall(self, removed):
-        for var, value in removed:
-            var.curr_domain.append(value)
+    def restoreall(self, removed:list):
+        ''' Восстанавливает значения, ранее исключенные из доменов переменных.
+            Список removed содержит кортежи вида (A, a), где A - переменная, a - значение
+            из её изначального домена.
+        '''
+        for var, value in removed: var.curr_domain.append(value)
 
-    def conflicts(self, X, possible_value):
-        ''' Returns number of conflicts in CSP for variable X '''
+    def conflicts(self, X: Variable, possible_value):
+        ''' Возвращает количество нарушенных ограничений, если переменной X будет
+            присвоено значение possible_value.
+        '''
         conflict = (lambda Y: Y.isassigned()
                               and not self.constraints(X, possible_value, Y, Y.curr_value))
         return len(list(filter(conflict, X.neighbors)))
 
     def violation_list(self):
+        ''' Возвращает список переменных, значения которых нарушают имеющиеся строгие ограничения '''
         return [var for var in self.variables
                 if var.isassigned() and self.conflicts(var, var.curr_value) > 0]
 
@@ -197,21 +228,69 @@ class MapColoring(CSP):
 
 
 class ScheduleVariable(Variable):
-    ''' Каждой записи в таблице Exercises соответствует количество переменных,
-        равное значению атрибута hours этой записи.
+    ''' Переменная, используемая в CSP, связанной с планированием расписания. Доменом каждой пере-
+        менной является список кортежей вида (timeslot, room), где timeslot - именованный кортеж,
+        хранящий день недели и номер пары, room - номер аудитории, в которой проходит занятие.
+        Помимо домена и текущего значения каждая переменная хранит дополнительные сведения, исполь-
+        зуемые для формирования расписания.
+
+            lecturer  - свойство, хранящее именованный кортеж с данными преподавателя
+            exercise  - свойство, хранящее сведения о проводимом занятии
+            listeners - хранит множество групп, которые содержат занятие exercise в своем
+                        учебном плане; планируется использовать данное множество для обработки
+                        ситуации, при которой несколько групп должны изучить один и тот же
+                        предмет, преподаваемый одним преподавателем
+            count     - номер, используемый для различия переменных в том случае, если
+                        занятие проводится более одного раза в неделю
+
+
     '''
+    # все возможные значения времени проведения занятий (день - номер пары)
+    # на данный момент предполагается максимум 6 учебных дней и 6 пар в день
     timeslots = [TimeSlot(d, h) for d in WEEK for h in range(1, 7)]
 
     def __init__(self, lecturer, exercise, listeners, possible_rooms, count = 0):
         super().__init__(domain=[(t, r) for t in ScheduleVariable.timeslots
                                         for r in possible_rooms])
-        self.lecturer = lecturer
-        self.exercise = exercise
+        self.__lecturer = lecturer
+        self.__exercise = exercise
+        self.__count = count
+        self.__key = (self.lecturer.id, self.exercise.id, count)
         self.listeners = listeners
         self.possible_rooms = possible_rooms
-        self.count = count
-        self.key = (self.lecturer.id, self.exercise.id, count)
         self.weight = None
+
+    @property
+    def type(self):
+        return self.__exercise.type
+
+    @property
+    def lecturer(self):
+        return self.__lecturer
+
+    @property
+    def exercise(self):
+        return self.__exercise
+
+    @property
+    def count(self):
+        return self.__count
+
+    @property
+    def key(self):
+        return self.__key
+
+    def samelecturers(self, other):
+        ''' Проверяет, относятся ли переменные к нагрузке одного и того же преподавателя '''
+        return self.lecturer.id == other.lecturer.id
+
+    def samerooms(self, other):
+        ''' Проверяет, имеются ли совпадения в списках допустимых аудиторий у двух переменных '''
+        return self.possible_rooms.intersection(other.possible_rooms)
+
+    def samelisteners(self, other):
+        ''' Возвращает пересечение множеств listeners двух переменных '''
+        return self.listeners.intersection(other.listeners)
 
     def __hash__(self):
         return hash(self.key)
@@ -226,46 +305,10 @@ class ScheduleVariable(Variable):
         process = 'process: {}'.format(self.exercise.type)
         return ' / '.join([key, fullname, discipline, process])
 
-    @property
-    def type(self):
-        return self.exercise.type
-
-    def samelecturers(self, other):
-        return self.lecturer.id == other.lecturer.id
-
-    def samerooms(self, other):
-        return self.possible_rooms.intersection(other.possible_rooms)
-
-    def samelisteners(self, other):
-        return self.listeners.intersection(other.listeners)
-
 
 class TimetablePlanner2(CSP):
-    ''' Планировщик расписаний.
+    ''' Класс планировщика расписаний как один из случаев решения CSP.
 
-        Планирование расписания рассматривается как решение CSP. Каждый
-        элемент расписания представлен переменной, значением которой
-        является кортеж, содержищий интервал времени (день и номер пары),
-        и номера аудитории. Необходимыми для инициализации входными
-        данными являются:
-
-        1) словарь, ключами которого являются имена преподавателей,
-           а значениями вновь словари; ключами этих вложенных словарей
-           являются названия предметов, значениями - количество часов,
-           которое должен провести преподаватель; при этом, лекционные
-           и практические занятия рассматриваются отдельно
-
-        2) словарь, ключами которого являются имена групп, а значениями -
-           списки предметов, предписанных для изучения
-
-        3) словарь, ключи которого - названия предметов, а значения -
-           списки аудиторий, в которых могут проводиться (или обычно проводятся)
-           занятия по данному предмету
-
-        Метод setup_constraints() связывает ограничениями переменные.
-        Метод constraints(A, a, B, b) проверяет, не нарушают ли
-        присваивания A=a и B=b какое-либо из ограничений (все ограничения
-        - бинарные).
     '''
     def __init__(self, weight_estimate=lambda x: 0):
         super().__init__()
@@ -281,19 +324,26 @@ class TimetablePlanner2(CSP):
                     possible_rooms = set(room_domains[subj])
                     # same name are equal (for now)
                     listeners = {g for g, s in group_disc.items()
-                                 if subj.name in [t[1] for t in s]} # FIXME: list compr
+                                 if subj.did in [t[0] for t in s]}
+                                 #if (subj.type == 1 and subj.name in [t[1] for t in s])
+                                 #or (subj.type == 3 and subj.did  in [t[0] for t in s])} # FIXME: list compr
                     #print(subj.name, subj.type, listeners)
                     self.add_variable(ScheduleVariable(lecturer, subj, listeners, possible_rooms, n))
                     n -= 1
+        # for v in self.variables: print(v, v.listeners)
 
     def setup_constraints(self):
+        ''' Устанавливает строгие ограничения для переменных '''
         for Xi in self.variables:
             for Xj in self.variables:
-                if Xi is Xj: continue
+                if Xi is Xj: continue # связывать переменную с собой же не нужно
                 if Xi.samelecturers(Xj) or Xi.samerooms(Xj) or Xi.samelisteners(Xj):
-                    Xi.neighbors.append(Xj)
+                    Xi.neighbors.append(Xj) # совпадают преподаватель, аудитории или группы
 
     def constraints(self, A, a, B, b):
+        ''' Проверяет, не нарушают ли присваивания A=a и B=b какое-либо из ограничений
+            (все ограничения - бинарные).
+        '''
         if A is B: return True
         aTime, aRoom = a
         bTime, bRoom = b
@@ -306,6 +356,10 @@ class TimetablePlanner2(CSP):
         return True
 
     def preferences(self):
+        ''' Возвращает вес найденного решения. Чем меньше вес, тем меньшее количество нестрогих
+            ограничений (предпочтений) было нарушено, и соответственно, тем "оптимальнее"
+            (в смысле, определяемом функцией weight_estimate) решение.
+        '''
         return self.weight_estimate(self.variables)
 
     def infer_assignment(self):
@@ -322,26 +376,33 @@ class TimetablePlanner2(CSP):
 
 
 def weight(vars):
-    if any(v for v in vars if v.isunassigned()): return INFINITY
+    ''' Эвристическая функция оценки качества найденного решения. В начале каждая переменная
+        оценивается отдельно от всех остальных, а затем её текущее значение рассматривается в
+        общем контексте. Суммарный вес решения состоит из суммы весов всех входящих в него пере-
+        менных. Чем больше вес, тем больше предпочтений не выполнено.
+    '''
+    if any(v for v in vars if not v.isassigned()): return INFINITY
     for v in vars:
         v.weight = 0
         timeslot, room = v.curr_value[0], v.curr_value[1]
         if timeslot.day == 'sat': v.weight += 10
         if timeslot.hour > 4: v.weight += 10
         if room.size > 40: v.weight += 5
-        if v.lecturer.lastname == 'Кузнецов' and timeslot.day in ['mon','sat']: v.weight += 100
+        if v.lecturer.lastname == 'Федоров' and timeslot.day in ['mon','sat']: v.weight += 100
+    # формирование списка групп переменных, которым присвоен один и тот же день
     grouped_by_day = [[v for v in vars if v.curr_value[0].day == day] for day in WEEK]
+    # ограничение количества занятий в день по одному предмету
     for group in grouped_by_day:
-        keyfunc = lambda x: getattr(x, 'exercise').name
+        keyfunc = lambda x: getattr(x, 'exercise').name # ф-ция для извлечения названия дисциплины
         grouped_by_exercise, acc = [], []
         group = sorted(group, key=keyfunc)
-        for _, g in itertools.groupby(group, key=keyfunc):
+        for _, g in itertools.groupby(group, key=keyfunc): # группирование переменных по дисц.
             grouped_by_exercise.append(list(g))
-        exercises = map(len, grouped_by_exercise)
+        exercises = map(len, grouped_by_exercise) # получения списка с количеством занятий по дисц.
         day_load = [g for n, g in zip(exercises, grouped_by_exercise) if n >= 3]
         for item in day_load:
             acc += item
-        for var in acc:
+        for var in acc: # назначения веса при наличии более 3 занятий в день по некоторому предмету
             var.weight += 40
     return bounded_sum(v.weight for v in vars)
 
@@ -364,7 +425,7 @@ def combined_local_search(csp, max_steps=2000):
 
     #for var in csp.variables:
     #    var.assign(argmin_conflicts(var))
-    BacktrackingSearch(csp, select_unassigned_variable=random_unassigned_variable)
+    BacktrackingSearch(csp) #, select_unassigned_variable=random_unassigned_variable)
     for v in csp.variables: v.curr_domain = v.init_domain
     best_value, best_assignment = INFINITY, csp.infer_assignment()
     tabu, timestep, time_limit = [], 0, 20
@@ -431,44 +492,46 @@ def GA(csp, population, selection, crossingover, mutate, fitness, max_steps=5000
     return best
 
 
-def assign_groups(csp):
+def assign_groups(assignment):
     # Необходимо распределить группы по переменным, т.е. по сути сократить множество
     # listeners каждой переменной до одного элемента. При этом, необходимо каждого
     # слушателя назначить единожды, а значит, придется группировать переменные по лекторам
     # и по полученным группам проходить в цикле, назначая и попутно вычеркивая группы (с этим проблема)
-       
+    #return
+    #result = { v.exercise.name:v.listeners for v in csp.variables }
+    return { v:(v.curr_value, v.listeners) for v in assignment }
 
-    return
-    result = {}
     for lecturer, grouper in itertools.groupby(csp.variables, key=lambda x: getattr(x, 'lecturer')):
         #print(lecturer, end=': ')
         #for v in grouper: print(v.listeners, end=' ')
         #print('')
         vars = sorted(list(grouper), key=lambda x: getattr(x, 'count'))
-        old_count = 1
         while vars:
             v = vars.pop()
-            possible_listeners = list(v.listeners)
-            print(v, v.listeners)
-            real_listener = random.choice(possible_listeners)
-            v.listeners = real_listener
-            if v.count <= old_count:
+            possible_listeners = sorted(list(v.listeners), key=lambda x: getattr('x', name))
+            #print(v, v.listeners)
+            real_listener = possible_listeners[0]
+            v.listeners = {real_listener}
+            if v.count == v.exercise.hours:
                 for var in vars:
-                    var.listeners = var.listeners.difference({real_listener})
-                old_count = v.count
+                    if len(var.listeners) > 1 and var.exercise.type == 1:
+                        var.listeners = var.listeners.difference({real_listener})
             result[v] = real_listener
     print_dictionary(result)
     pass
+
 
 if __name__ == '__main__':
     ttp = TimetablePlanner2(weight_estimate=weight)
     ttp.setup_constraints()
     #BacktrackingSearch(ttp)
     a = combined_local_search(ttp, max_steps=500); print(len(ttp.assignment))
-    #for day in WEEK:
-    #    print_dictionary({ x:a[x] for x in a if a[x][0].day == day })
-    #    print('-'*80)
-    assign_groups(ttp)
+    for day in WEEK:
+        print_dictionary({ x:a[x] for x in a if a[x][0].day == day })
+        print('-'*80)
+    #b = assign_groups(a); print(len(b))
+    #print_dictionary(b)
+
 
     easy1 = '..3.2.6..9..3.5..1..18.64....81.29..7.......8..67.82....26.95..8..2.3..9..5.1.3..'
     s = Sudoku(easy1)

@@ -51,7 +51,7 @@ def forward_checking(X, csp, removed):
         [According to: AIMA, 3rd, p.217]
     '''
     for Y in X.neighbors:
-        if Y.isunassigned():
+        if not Y.isassigned():
             for y in Y.curr_domain:
                 if not csp.constraints(X, X.curr_value, Y, y):
                     Y.curr_domain.remove(y)

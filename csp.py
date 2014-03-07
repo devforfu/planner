@@ -127,12 +127,18 @@ class CSP:
                      and len(self.assignment) == len(self.variables)
                   else INFINITY)
 
-    def restoreall(self, removed:list):
+    def restore(self, removed:list):
         ''' Восстанавливает значения, ранее исключенные из доменов переменных.
             Список removed содержит кортежи вида (A, a), где A - переменная, a - значение
             из её изначального домена.
         '''
-        for var, value in removed: var.curr_domain.append(value)
+        for var, value in removed:
+            var.curr_domain.append(value)
+
+    def restoreall(self):
+        ''' Приводит все домены переменных в CSP в исходное состояние '''
+        for v in self.variables:
+            v.curr_domain = v.init_domain
 
     def conflicts(self, X: Variable, possible_value):
         ''' Возвращает количество нарушенных ограничений, если переменной X будет
@@ -407,89 +413,45 @@ def weight(vars):
     return bounded_sum(v.weight for v in vars)
 
 
-def max_day_load(assignment):
-    pairs = [[v.curr_value[0].hour for v in assignment
-             if v.curr_value[0].day == day] for day in WEEK]
-    return max(map(max, filter(lambda x: len(x), pairs)))
+def argmin_conflicts(var, csp):
+    #args = argmin(lambda x: csp.conflicts(var, x), var.curr_domain)
+    #filter(lambda x: getattr('weight'))
+    return argmin(lambda x: csp.conflicts(var, x),
+                  var.curr_domain, random.choice)
 
 
-def combined_local_search(csp, max_steps=2000):
-    def argmin_conflicts(var):
-        return argmin(lambda x: csp.conflicts(var, x),
-                      var.curr_domain, random.choice)
+def most_weight_variable(vars, csp):
+    csp.weight_estimate(vars)
+    return max(vars, key=lambda x: getattr(x, 'weight'))
 
-    def most_weight_variable(vars):
-        from operator import itemgetter
-        csp.weight_estimate(vars)
-        return max(vars, key=lambda x: getattr(x, 'weight'))
 
-    #for var in csp.variables:
-    #    var.assign(argmin_conflicts(var))
-    BacktrackingSearch(csp) #, select_unassigned_variable=random_unassigned_variable)
-    for v in csp.variables: v.curr_domain = v.init_domain
+def combined_local_search(csp,
+                          select_variable=most_weight_variable,
+                          select_domain_value=argmin_conflicts,
+                          max_steps=2000,
+                          filename:str = ''):
+    # fn = open(filename, 'w') if filename else None
+    BacktrackingSearch(csp)
+    csp.restoreall()
     best_value, best_assignment = INFINITY, csp.infer_assignment()
-    tabu, timestep, time_limit = [], 0, 20
-    for _ in range(max_steps):
+    tabu, size = [], 10
+    for i in range(max_steps):
         vars = [v for v in csp.variables if v not in tabu]
-        # print(len(csp.variables), len(tabu), len(vars))
-        X = most_weight_variable(vars)
-        a = argmin_conflicts(X) # FIXME?: возвращать список значений, а уже из него выбирать в соответствии с весом
+        X = select_variable(vars, csp)
+        a = select_domain_value(X, csp) # FIXME?: возвращать список значений, а уже из него выбирать в соответствии с весом
         X.assign(a)
         violations = csp.violation_list()
         for Y in violations: Y.unassign()
         if not violations:
             estimate = csp.preferences()
             if estimate < best_value:
-                # print(estimate)
+                print(estimate)
+                # if fn: fn.write('{} {}\n'.format(i, estimate));
                 best_value, best_assignment = estimate, csp.infer_assignment()
-        #for Y in violations: Y.unassign()
-        if X.isassigned(): tabu.append(X)
-        timestep += 1
-        if timestep == time_limit:
-            timestep = 0
-            if tabu: tabu = tabu[:1]
+        if X.isassigned():
+            tabu.append(X)
+            if len(tabu) >= 10: tabu.pop()
     return best_assignment
-
-
-def selection(population, fn):
-    if random.random() <= 0.1:
-        return random.choice(population)
-    return max(population, key=fn)
-
-
-def crossingover(csp, X, Y):
-    n = len(X)
-    while True:
-        partition = random.randint(n/2, 2*n/3)
-        csp.variables = X.variables[:partition] + Y.variables[partition:]
-        if min_conflicts(csp, max_steps=1000) is not None:
-            return csp.variables
-
-
-def mutate(csp, child:dict):
-    keys = list(child.keys())
-    k = random.choice(keys)
-    var = child[k]
-    var.assign(random.choice(var.curr_domain))
-    csp.variables = child
-    child[var] = var.curr_value
-    return child
-
-
-def GA(csp, population, selection, crossingover, mutate, fitness, max_steps=5000):
-    n, p = len(population), 0.01
-    for _ in range(max_steps):
-        new_population = {}
-        for _ in range(n):
-            X = selection(population, fitness)
-            Y = selection(population, fitness)
-            child = crossingover(csp, X, Y)
-            if random.random() < p:
-                child = mutate(child)
-            new_population.add(child)
-        population = new_population
-    best = max(population, key=fitness)
-    return best
 
 
 def assign_groups(assignment):
@@ -509,7 +471,6 @@ def assign_groups(assignment):
         while vars:
             v = vars.pop()
             possible_listeners = sorted(list(v.listeners), key=lambda x: getattr('x', name))
-            #print(v, v.listeners)
             real_listener = possible_listeners[0]
             v.listeners = {real_listener}
             if v.count == v.exercise.hours:
@@ -524,14 +485,24 @@ def assign_groups(assignment):
 if __name__ == '__main__':
     ttp = TimetablePlanner2(weight_estimate=weight)
     ttp.setup_constraints()
-    #BacktrackingSearch(ttp)
-    a = combined_local_search(ttp, max_steps=500); print(len(ttp.assignment))
+    a = combined_local_search(
+        ttp,
+        max_steps=1000,
+        filename='weight'
+    )
     for day in WEEK:
-        print_dictionary({ x:a[x] for x in a if a[x][0].day == day })
-        print('-'*80)
-    #b = assign_groups(a); print(len(b))
-    #print_dictionary(b)
-
+        print_dictionary({ x:a[x] for x in a if a[x][0].day == day }); print('-'*80)
+    #ttp.restoreall()
+    #BacktrackingSearch(ttp)
+    #b = combined_local_search(
+    #    ttp,
+    #    select_variable=lambda vars, _: random.choice(vars),
+    #    max_steps=1000,
+    #    filename='random'
+    #);
+    #print('\n\n\n')
+    #for day in WEEK:
+    #    print_dictionary({ x:b[x] for x in b if b[x][0].day == day }); print('-'*80)
 
     easy1 = '..3.2.6..9..3.5..1..18.64....81.29..7.......8..67.82....26.95..8..2.3..9..5.1.3..'
     s = Sudoku(easy1)

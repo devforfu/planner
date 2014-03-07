@@ -83,14 +83,14 @@ def BacktrackingSearch(csp,
                     result = Backtrack()
                     if result:
                         return True
-                csp.restoreall(removed)
+                csp.restore(removed)
             var.unassign()
         return False
 
     return Backtrack()
 
 
-def argmin_conflicts(csp, var):
+def argmin_conflicts(var, csp):
     return argmin(lambda x: csp.conflicts(var, x),
                   var.curr_domain, random.choice)
 
@@ -103,12 +103,11 @@ def min_conflicts(csp, max_steps=10000):
     # initial assignment (probably unfeasible)
     if len(csp.assignment) != len(csp.variables):
         for var in csp.variables:
-            var.assign(argmin_conflicts(var))
+            var.assign(argmin_conflicts(var, csp))
     # local search
     for _ in range(max_steps):
         violations = csp.violation_list()
         if not violations: # all constrains satisfied
-            print('done')
             return csp.variables
         var = random.choice(violations)
         val = argmin_conflicts(var)

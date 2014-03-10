@@ -107,6 +107,10 @@ class CSP:
         ''' Реализуется, в случае необходимости, при решении конкретных задач '''
         pass
 
+    def setup_preferences(self):
+        ''' Реализуется, в случае необходимости, при решении конкретных задач '''
+        pass
+
     def infer_assignment(self):
         ''' Возвращает словарь из переменных и их текущих доменов '''
         return dict((str(Xi), Xi.curr_domain) for Xi in self.variables)
@@ -152,6 +156,9 @@ class CSP:
         ''' Возвращает список переменных, значения которых нарушают имеющиеся строгие ограничения '''
         return [var for var in self.variables
                 if var.isassigned() and self.conflicts(var, var.curr_value) > 0]
+
+    def display(self):
+        return self.__str__()
 
 
 def flatten(seqs):    return sum(seqs, [])
@@ -286,6 +293,30 @@ class ScheduleVariable(Variable):
     def key(self):
         return self.__key
 
+    @property
+    def day(self):
+        return self.curr_value[0].day
+
+    @property
+    def hour(self):
+        return self.curr_value[0].hour
+
+    @property
+    def room(self):
+        return self.curr_value[1]
+
+    @property
+    def first_name(self):
+        return self.__lecturer.firstname
+
+    @property
+    def middle_name(self):
+        return self.__lecturer.middlename
+
+    @property
+    def last_name(self):
+        return self.__lecturer.lastname
+
     def samelecturers(self, other):
         ''' Проверяет, относятся ли переменные к нагрузке одного и того же преподавателя '''
         return self.lecturer.id == other.lecturer.id
@@ -312,10 +343,32 @@ class ScheduleVariable(Variable):
         return ' / '.join([key, fullname, discipline, process])
 
 
-class TimetablePlanner2(CSP):
-    ''' Класс планировщика расписаний как один из случаев решения CSP.
+class Preference:
+    def __init__(self, variable, conditions, penalty):
+        self.__variable = variable
+        self.__conditions = conditions
+        self.__penalty = penalty
 
-    '''
+    @property
+    def conditions(self):
+        return self.__conditions
+
+    @property
+    def penalty(self):
+        return self.__penalty
+
+    @property
+    def variable(self):
+        return self.__variable
+
+    def isfired(self):
+        for attrname, domain in self.conditions:
+            if not (getattr(self.__variable, attrname) in domain):
+                return False
+        return True
+
+class TimetablePlanner2(CSP):
+    ''' Класс планировщика расписаний как один из случаев решения CSP. '''
     def __init__(self, weight_estimate=lambda x: 0):
         super().__init__()
         self.weight_estimate = weight_estimate
@@ -345,6 +398,17 @@ class TimetablePlanner2(CSP):
                 if Xi is Xj: continue # связывать переменную с собой же не нужно
                 if Xi.samelecturers(Xj) or Xi.samerooms(Xj) or Xi.samelisteners(Xj):
                     Xi.neighbors.append(Xj) # совпадают преподаватель, аудитории или группы
+
+    def setup_preferences(self):
+        """ Рассчитывает вес полученного присваивания.
+        >>> p1 = Preference([
+        ...     dict(property1=domain1, property2=domain21),
+        ...     dict(property3=domain3),
+        ...     dict(property2=domain22)
+        ...])
+        >>> variable.add_preference(p1)
+        """
+        pass
 
     def constraints(self, A, a, B, b):
         ''' Проверяет, не нарушают ли присваивания A=a и B=b какое-либо из ограничений
@@ -390,13 +454,12 @@ def weight(vars):
     if any(v for v in vars if not v.isassigned()): return INFINITY
     for v in vars:
         v.weight = 0
-        timeslot, room = v.curr_value[0], v.curr_value[1]
-        if timeslot.day == 'sat': v.weight += 10
-        if timeslot.hour > 4: v.weight += 10
-        if room.size > 40: v.weight += 5
-        if v.lecturer.lastname == 'Федоров' and timeslot.day in ['mon','sat']: v.weight += 100
+        if v.day == 'sat': v.weight += 10
+        if v.room.size > 40: v.weight += 10
+        if v.last_name == 'Хомский' and v.day in ['mon','sat']: v.weight += 25
+        if v.last_name == 'Сидоров' and v.day not in ['fri', 'sat']: v.weight += 25
     # формирование списка групп переменных, которым присвоен один и тот же день
-    grouped_by_day = [[v for v in vars if v.curr_value[0].day == day] for day in WEEK]
+    grouped_by_day = [[v for v in vars if v.day == day] for day in WEEK]
     # ограничение количества занятий в день по одному предмету
     for group in grouped_by_day:
         keyfunc = lambda x: getattr(x, 'exercise').name # ф-ция для извлечения названия дисциплины
@@ -409,19 +472,24 @@ def weight(vars):
         for item in day_load:
             acc += item
         for var in acc: # назначения веса при наличии более 3 занятий в день по некоторому предмету
-            var.weight += 40
+            var.weight += 75
     return bounded_sum(v.weight for v in vars)
 
 
 def argmin_conflicts(var, csp):
-    #args = argmin(lambda x: csp.conflicts(var, x), var.curr_domain)
-    #filter(lambda x: getattr('weight'))
-    return argmin(lambda x: csp.conflicts(var, x),
-                  var.curr_domain, random.choice)
+    def f(x):
+        var.assign(x)
+        return csp.preferences()
+
+    args = argmin(lambda x: csp.conflicts(var, x), var.curr_domain)
+    random.shuffle(args)
+    return argmin(f, args[:5], random.choice)
+
+    #return argmin(lambda x: csp.conflicts(var, x),
+    #              var.curr_domain, random.choice)
 
 
 def most_weight_variable(vars, csp):
-    csp.weight_estimate(vars)
     return max(vars, key=lambda x: getattr(x, 'weight'))
 
 
@@ -429,28 +497,33 @@ def combined_local_search(csp,
                           select_variable=most_weight_variable,
                           select_domain_value=argmin_conflicts,
                           max_steps=2000,
-                          filename:str = ''):
-    # fn = open(filename, 'w') if filename else None
+                          attempt_limit=200,
+                          filename:str = 'log'):
+    #TODO: ввести ограничение на количество нерезультативных итераций и перезапускать поиск
+    f = open(filename, 'w') if filename else None
     BacktrackingSearch(csp)
     csp.restoreall()
     best_value, best_assignment = INFINITY, csp.infer_assignment()
-    tabu, size = [], 10
+    tabu, size, attempt = [], 10, 0
+    estimate = csp.preferences()
     for i in range(max_steps):
+        if attempt > attempt_limit: break
         vars = [v for v in csp.variables if v not in tabu]
         X = select_variable(vars, csp)
-        a = select_domain_value(X, csp) # FIXME?: возвращать список значений, а уже из него выбирать в соответствии с весом
-        X.assign(a)
+        # FIXME?: возвращать список значений, а уже из него выбирать в соответствии с весом
+        X.assign(select_domain_value(X, csp))
         violations = csp.violation_list()
-        for Y in violations: Y.unassign()
+        estimate = csp.preferences()
         if not violations:
-            estimate = csp.preferences()
             if estimate < best_value:
-                print(estimate)
-                # if fn: fn.write('{} {}\n'.format(i, estimate));
-                best_value, best_assignment = estimate, csp.infer_assignment()
-        if X.isassigned():
-            tabu.append(X)
-            if len(tabu) >= 10: tabu.pop()
+                f.write('{} {}\n'.format(i, estimate))
+                attempt, best_value, best_assignment = 0, estimate, csp.infer_assignment()
+            else:
+                f.write('{} {}\n'.format(i, best_value))
+                attempt += 1
+        for Y in violations: Y.unassign()
+        if X.isassigned(): tabu.append(X)
+        if len(tabu) >= 10: tabu.pop()
     return best_assignment
 
 
@@ -483,21 +556,23 @@ def assign_groups(assignment):
 
 
 if __name__ == '__main__':
-    ttp = TimetablePlanner2(weight_estimate=weight)
-    ttp.setup_constraints()
+    ttp1 = TimetablePlanner2(weight_estimate=weight)
+    ttp2 = TimetablePlanner2(weight_estimate=weight)
+    ttp1.setup_constraints()
+    ttp2.setup_constraints()
     a = combined_local_search(
-        ttp,
-        max_steps=1000,
+        ttp1,
+        max_steps=10000,
+        attempt_limit=1000,
         filename='weight'
     )
     for day in WEEK:
-        print_dictionary({ x:a[x] for x in a if a[x][0].day == day }); print('-'*80)
-    #ttp.restoreall()
-    #BacktrackingSearch(ttp)
+       print_dictionary({ x:a[x] for x in a if a[x][0].day == day }); print('-'*80)
     #b = combined_local_search(
-    #    ttp,
-    #    select_variable=lambda vars, _: random.choice(vars),
-    #    max_steps=1000,
+    #    ttp2,
+    #    select_domain_value=lambda var, _: random.choice(var.curr_domain),
+    #    max_steps=10000,
+    #    attempt_limit=1000,
     #    filename='random'
     #);
     #print('\n\n\n')

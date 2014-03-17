@@ -1,7 +1,12 @@
 import sys
+from collections import defaultdict
+
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
-from csp import *
+
+from csp import TimetablePlanner2, assign_groups
+from utils import INFINITY, WEEK
+from algorithms import backtracking_search, combined_local_search, weight
 
 
 class ScheduleEntry(QWidget):
@@ -24,8 +29,8 @@ class ScheduleEntry(QWidget):
         layout.addWidget(s1)
         layout.addLayout(labelGrid)
         layout.addWidget(s2)
-        self.setMinimumWidth(140)
-        self.setMaximumWidth(140)
+        self.setMinimumWidth(180)
+        self.setMaximumWidth(180)
         self.setLayout(layout)
 
     def paintEvent(self, event: QPaintEvent):
@@ -142,34 +147,38 @@ class TimetableWindow(QDialog):
 
 
 if __name__ == '__main__':
+    import time
+    app = QApplication(sys.argv)
     ttp = TimetablePlanner2(weight_estimate=weight)
     ttp.setup_constraints()
-    backtracking_search(ttp)
-    a = combined_local_search(
-        ttp,
-        select_variable=lambda x, _: most_weight_variable(x),
-        max_steps=10000,
-        attempt_limit=100
-    )
-
-    #a = min_conflicts(ttp, max_steps=2000)
-
-    #backtracking_search(ttp)
-    #a = ttp.infer_assignment()
-
-    tree = lambda: defaultdict(tree); root = tree()
+    ttp.setup_preferences()
+    best_value, best_assignment = INFINITY, None
+    max_restarts = 1
+    for i in range(max_restarts):
+        t = time.time()
+        v, a = combined_local_search(ttp, max_steps=250)
+        t = time.time() - t
+        print('time elapsed: ', t)
+        if v < best_value:
+            best_value, best_assignment = v, a
+        print(v)
+        if i != max_restarts - 1:
+            for v in ttp.variables: v.unassign(); ttp.restoreall()
+    print('best: ', best_value)
+    a = best_assignment
     d = defaultdict(dict)
     b = assign_groups(a)
     for var in b:
         ((day, hour), room), groupset = b[var]
-        group = groupset.pop()
-        t = (var.discipline, var.last_name, room.name)
+        if groupset:
+            group = groupset.pop()
+        else:
+            continue
+        t = (var.discipline, var.lecturer_name, room.name)
         try:
             d[group][day][hour] = t
         except KeyError as e:
             d[group][day] = {hour:t}
-
-    app = QApplication(sys.argv)
     wgt = TimetableWindow(d)
     wgt.show()
     app.exec_()

@@ -2,8 +2,7 @@ import itertools, re, random
 from functools import reduce
 
 from dbconnect import *
-from algorithms import *
-
+from utils import WEEK
 
 database = UniversityDatabase()
 TimeSlot = namedtuple('TimeSlot', ['day', 'hour']) # timeslot in schedule
@@ -41,9 +40,9 @@ class Variable:
     def __init__(self, domain:list, neighbors = None, name = None):
         self.__name = name
         self.__init_domain = domain
-        self.neighbors = [] if neighbors is None else neighbors
+        self.__curr_value = None
         self.curr_domain = domain
-        self.curr_value = None
+        self.neighbors = [] if neighbors is None else neighbors
 
     @property
     def init_domain(self):
@@ -53,12 +52,16 @@ class Variable:
     def name(self):
         return self.__name
 
+    @property
+    def curr_value(self):
+        return self.__curr_value
+
     def assign(self, value):
         assert(value in self.curr_domain)
-        self.curr_value = value
+        self.__curr_value = value
 
     def unassign(self):
-        self.curr_value = None
+        self.__curr_value = None
 
     def isassigned(self):
         return self.curr_value is not None
@@ -186,9 +189,9 @@ class ScheduleVariable(Variable):
         self.__lecturer = lecturer
         self.__exercise = exercise
         self.__count = count
-        self.__key = (self.lecturer.id, self.exercise.id, count)
         self.__listeners = listeners
-        self.possible_rooms = possible_rooms
+        self.__key = (self.lecturer.id, self.exercise.id, count)
+        self.__possible_rooms = possible_rooms
         self.weight = None
 
     @property
@@ -228,20 +231,19 @@ class ScheduleVariable(Variable):
         return self.curr_value[1]
 
     @property
-    def first_name(self):
-        return self.__lecturer.firstname
-
-    @property
-    def middle_name(self):
-        return self.__lecturer.middlename
-
-    @property
-    def last_name(self):
-        return self.__lecturer.lastname
+    def lecturer_name(self):
+        return ' '.join([
+            self.__lecturer.firstname,
+            self.__lecturer.middlename,
+            self.__lecturer.lastname])
 
     @property
     def listeners(self):
         return self.__listeners
+
+    @property
+    def possible_rooms(self):
+        return self.__possible_rooms
 
     def samelecturers(self, other):
         """ Проверяет, относятся ли переменные к нагрузке одного и того же преподавателя """
@@ -249,7 +251,7 @@ class ScheduleVariable(Variable):
 
     def samerooms(self, other):
         """ Проверяет, имеются ли совпадения в списках допустимых аудиторий у двух переменных """
-        return self.possible_rooms.intersection(other.possible_rooms)
+        return self.__possible_rooms.intersection(other.possible_rooms)
 
     def samelisteners(self, other):
         """ Возвращает пересечение множеств listeners двух переменных """
@@ -260,41 +262,39 @@ class ScheduleVariable(Variable):
 
     def __str__(self):
         key = str(self.key)
-        fullname = ' '.join([
-            self.lecturer.firstname,
-            self.lecturer.middlename,
-            self.lecturer.lastname])
         discipline = self.exercise.name
         process = 'process: {}'.format(self.exercise.type)
-        return ' / '.join([key, fullname, discipline, process])
+        return ' / '.join([key, self.lecturer_name, discipline, process])
 
 
 class Preference:
-    def __init__(self, variable, conditions, penalty):
-        self.__variable = variable
-        self.__conditions = conditions
-        self.__penalty = penalty
+    """ Класс 
+    """
+    def __init__(self, conditions: dict, penalty: int):
+        self.conditions = conditions
+        self.penalty = penalty
+        self.string = 'if '
+        for attrname, domain in self.conditions.items():
+            self.string += ' (attribute {} in domain {})\nand'.format(attrname, domain)
+        self.string = self.string[:-3] + 'then penalty={}'.format(self.penalty)
 
-    @property
-    def conditions(self):
-        return self.__conditions
+    def __str__(self):
+        return self.string
 
-    @property
-    def penalty(self):
-        return self.__penalty
+    def check(self, variable):
+        if not variable.isassigned():
+            return INFINITY
+        for attrname, domain in self.conditions.items():
+            if not (getattr(variable, attrname) in domain):
+                return 0
+        return self.penalty
 
-    @property
-    def variable(self):
-        return self.__variable
-
-    def isfired(self):
-        for attrname, domain in self.conditions:
-            if not (getattr(self.__variable, attrname) in domain):
-                return False
-        return True
 
 class TimetablePlanner2(CSP):
-    """ Класс планировщика расписаний как один из случаев решения CSP. """
+    """ Класс планировщика расписаний как один из случаев решения CSP.
+        На данном этапе не учитывает многие факторы. Использует глобальные функции для
+        получения значений из БД приложения. В дальнейшем конструктор класса будет преобразован.
+    """
     def __init__(self, weight_estimate=lambda x: 0):
         super().__init__()
         self.weight_estimate = weight_estimate
@@ -302,20 +302,14 @@ class TimetablePlanner2(CSP):
         room_domains = get_room_domains()
         group_disc = get_group_disciplines()
         for lecturer in sorted(lecturer_hours):
-            subj_set = lecturer_hours[lecturer]
-            for subj in subj_set:
-                n = int(subj.hours) # subj = exercise
-                while n > 0:
-                    possible_rooms = set(room_domains[subj])
-                    # same name are equal (for now)
+            exercises_set = lecturer_hours[lecturer]
+            for ex in exercises_set:
+                for n in range(int(ex.hours)): # по одной переменной на каждое занятие
+                    possible_rooms = set(room_domains[ex])
                     listeners = {g for g, s in group_disc.items()
-                                 if subj.did in [t[0] for t in s]}
-                                 #if (subj.type == 1 and subj.name in [t[1] for t in s])
-                                 #or (subj.type == 3 and subj.did  in [t[0] for t in s])} # FIXME: list compr
-                    #print(subj.name, subj.type, listeners)
-                    self.add_variable(ScheduleVariable(lecturer, subj, listeners, possible_rooms, n))
-                    n -= 1
-        # for v in self.variables: print(v, v.listeners)
+                                 if ex.did in [t[0] for t in s]}
+                    self.add_variable(ScheduleVariable(lecturer, ex, listeners, possible_rooms, n+1))
+        print(len(self.variables))
 
     def setup_constraints(self):
         """ Устанавливает строгие ограничения для переменных """
@@ -326,15 +320,23 @@ class TimetablePlanner2(CSP):
                     Xi.neighbors.append(Xj) # совпадают преподаватель, аудитории или группы
 
     def setup_preferences(self):
-        """ Рассчитывает вес полученного присваивания.
-        >>> p1 = Preference([
-        ...     dict(property1=domain1, property2=domain21),
-        ...     dict(property3=domain3),
-        ...     dict(property2=domain22)
-        ...])
-        >>> variable.add_preference(p1)
+        """ Задает локальные предпочтения для значений переменных. Под локальностью подразумевается
+            отсутствие предпочтений, охватывающих более одной переменной.
+            В настоящий момент функция содержит вручную закодированные ограничения. В дальнейшем
+            планируется организация управления предпочтениями на основе данных пользовательского
+            ввода. Учет предпочтений производится методом weight_estimate().
         """
-        pass
+        p1 = Preference(dict(day=['sat']), 10)
+        p2 = Preference(dict(hour=[4,5,6]), 25)
+        p3 = Preference(dict(hour=[6]), 25)
+        p4 = Preference(dict(day=['mon', 'sat']), 50)
+        p5 = Preference(dict(day=['mon', 'tue', 'wed', 'thu']), 50)
+        for v in self.variables:
+            v.preferences = [p1, p2, p3]
+            if v.lecturer_name == 'К. Н. Хомский':
+                v.preferences.append(p4)
+            elif v.lecturer_name == 'П. К. Сидоров':
+                v.preferences.append(p5)
 
     def constraints(self, A, a, B, b):
         """ Проверяет, не нарушают ли присваивания A=a и B=b какое-либо из ограничений
@@ -369,39 +371,6 @@ class TimetablePlanner2(CSP):
         if hours:
             a = { x:a[x] for x in a if a[x][0].hour in hours }
         print(len(a)); print_dictionary(a)
-
-
-def weight(vars):
-    """ Эвристическая функция оценки качества найденного решения. В начале каждая переменная
-        оценивается отдельно от всех остальных, а затем её текущее значение рассматривается в
-        общем контексте. Суммарный вес решения состоит из суммы весов всех входящих в него пере-
-        менных. Чем больше вес, тем больше предпочтений не выполнено.
-    """
-    if any(v for v in vars if not v.isassigned()): return INFINITY
-    for v in vars:
-        v.weight = 0
-        if v.day == 'sat': v.weight += 10
-        if v.room.size > 40: v.weight += 10
-        if v.hour == 6: v.weight += 50
-        if v.hour > 3: v.weight += 25
-        if v.last_name == 'Хомский' and v.day in ['mon','sat']: v.weight += 25
-        if v.last_name == 'Сидоров' and v.day not in ['fri', 'sat']: v.weight += 25
-    # формирование списка групп переменных, которым присвоен один и тот же день
-    grouped_by_day = [[v for v in vars if v.day == day] for day in WEEK]
-    # ограничение количества занятий в день по одному предмету
-    for group in grouped_by_day:
-        keyfunc = lambda x: getattr(x, 'discipline') # ф-ция для извлечения названия дисциплины
-        grouped_by_exercise, acc = [], []
-        group = sorted(group, key=keyfunc)
-        for _, g in itertools.groupby(group, key=keyfunc): # группирование переменных по дисц.
-            grouped_by_exercise.append(list(g))
-        exercises = map(len, grouped_by_exercise) # получения списка с количеством занятий по дисц.
-        day_load = [g for n, g in zip(exercises, grouped_by_exercise) if n >= 3]
-        for item in day_load:
-            acc += item
-        for var in acc: # назначения веса при наличии более 3 занятий в день по некоторому предмету
-            var.weight += 75
-    return bounded_sum(v.weight for v in vars)
 
 
 def assign_groups(assignment):

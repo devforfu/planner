@@ -8,7 +8,14 @@ from PyQt4.QtSql import *
 from PyQt4.QtCore import *
 from dbconnect import createConnection
 
-#__all__ = ['fillDatabase']
+def throw_sql_error(function):
+    def wrapper(self, *args):
+        if not function(self, *args):
+            msg = "{0} failed: {1}".format(
+                function.__name__, self.query.lastError().text())
+            raise DatabaseError(msg)
+    return wrapper
+
 
 class FictionUniversity:
     def __init__(self, db: QSqlDatabase):
@@ -171,7 +178,7 @@ class FictionUniversity:
 
     @throw_sql_error
     def fill_teachers_for_department(self, dept_name:str, fnames:list, mnames:list,
-                                     lnames:list, overall:int = 8):
+                                     lnames:list, overall:int = 120):
         query = self.query
         query.exec("select id from departments where name like '{}'".format(dept_name))
         dept_id = query.next() and query.value(0)
@@ -245,6 +252,8 @@ class FictionUniversity:
                 q.bindValue(':hours', random.choice([2,2,3,4]))
                 if not q.exec_():
                     return False
+                if not disciplines:
+                    return True
         return True
 
 
@@ -273,7 +282,7 @@ if __name__ == '__main__':
 
     positions = ['Ассистент', 'Преподаватель', 'Ст. преподаватель',
                  'Доцент', 'Профессор', 'Зав. кафедрой']
-    types = ['Лабораторная', 'Лекция', 'Практика']
+    types = ['Лекция', 'Лабораторная', 'Практика']
     buildings = ['Главное здание', 'Северный корпус', 'Южный корпус', 'Новое здание']
     degrees = ['Специалитет', 'Магистратура', 'Бакалавриат']
     fiction = FictionUniversity(db)

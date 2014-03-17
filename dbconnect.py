@@ -77,8 +77,8 @@ class UniversityDatabase:
         query_text = "select id, firstname, middlename, lastname from teachers "
         if ids:
             query_text += "where id in ".format(ids + (0,))
-        self.query.exec(query_text)
         teacher_hours = defaultdict(set)
+        self.query.exec(query_text)
         while self.query.next():
             t = Teacher(*(self.query.value(x) for x in range(4)))
             query_text = "select e.id, d.id, e.type_id, d.name, e.hours from " \

@@ -4,8 +4,12 @@ import random
 INFINITY = 99999
 WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
-def print_dictionary(dict):
-    if not dict: print('Empty'); return
+def print_dictionary(dict, isjson=False):
+    import json
+    if not dict:
+        print('Empty'); return
+    if isjson:
+        print(json.dumps(dict)); return
     for key in sorted(dict.keys(), key=hash, reverse=True):
         acc = ''
         if isinstance(dict[key], list):

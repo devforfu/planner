@@ -62,7 +62,7 @@ def random_unassigned_variable(csp: CSP) -> Variable:
 def minimum_remaining_value(csp: CSP):
     pass
 
-def most_weight_variable(csp) -> int:
+def most_weight_variable(csp: CSP) -> int:
     """ Возвращает переменную с максимальным значением атрибута weight. """
     return max(csp.variables, key=lambda x: getattr(x, 'weight'))
 
@@ -99,19 +99,8 @@ def weight(vars):
         общем контексте. Суммарный вес решения состоит из суммы весов всех входящих в него пере-
         менных. Чем больше вес, тем больше предпочтений не выполнено.
     """
-    #for v in vars:
-    #    v.weight = sum(p.check(v) for p in v.preferences)
-
     for v in vars:
-        v.weight = 0
-        if not v.isassigned(): v.weight = INFINITY; continue
-        if v.day == 'sat': v.weight += 10
-        if v.room.size > 40: v.weight += 10
-        #if v.hour == 6: v.weight += 25
-        if v.hour > 3: v.weight += 75
-        if v.lecturer_name == 'К. Н. Хомский' and v.day in ['mon','sat']: v.weight += 50
-        if v.lecturer_name == 'П. К. Сидоров' and v.day not in ['fri', 'sat']: v.weight += 50
-    #if any(v for v in vars if not v.isassigned()): return INFINITY
+        v.weight = sum(p.check(v) for p in v.preferences)
     # формирование списка групп переменных, которым присвоен один и тот же день
     grouped_by_day = [[v for v in vars if v.day == day] for day in WEEK]
     # ограничение количества занятий в день по одному предмету
@@ -170,15 +159,16 @@ def backtracking_search(csp: CSP,
 
 
 def min_conflicts(csp: CSP, max_steps=2000):
-    """ Локальный поиск, основанный на минимизации количества конфликтов """
+    """ Локальный поиск, основанный на минимизации количества конфликтов. Возвращает первое
+        найденное решение, удовлетворяющее всем строгим ограничениям.
+    """
     # Изначальное присваивание (может нарушать ограничения)
-    if len(csp.assignment) != len(csp.variables):
-        for var in csp.variables:
-            var.assign(argmin_conflicts(var, csp))
+    for var in csp.variables:
+        var.assign(argmin_conflicts(var, csp))
     # Поиск проходит до тех пор, пока не будет найдено решение или не будет исчерпан лимит попыток
     for i in range(max_steps):
         violations = csp.violation_list()
-        if not violations: # все ограничения удовлетворены
+        if not violations: # Все ограничения удовлетворены
             return csp.infer_assignment()
         var = random.choice(violations)
         val = argmin_conflicts(var, csp)
@@ -186,15 +176,18 @@ def min_conflicts(csp: CSP, max_steps=2000):
     return None
 
 
-def combined_local_search(csp: CSP,
-                          select_variable=most_weight_variable,
-                          select_domain_value=weighted_argmin_conflicts,
-                          max_steps=1000,
-                          filename:str = 'log'):
-    #TODO: ввести ограничение на количество нерезультативных итераций и перезапускать поиск
+def weighted_search(csp: CSP,
+                    select_variable=most_weight_variable,
+                    select_domain_value=weighted_argmin_conflicts,
+                    max_steps=1000,
+                    filename:str = 'log'):
+    """ Локальный поиск с использованием весовой функции в качестве эвристики выбора значения
+        очередной переменной. Используется для тестирования реализованных алгоритмов и записывает в
+        файл данные для построения графика зависимости значения веса решения от номера итерации.
+    """
     f = open(filename, 'w')
-    if backtracking_search(csp): # Изначальное присваивание с помощью поиска с возвратами
-        csp.restoreall() # Восстановление исходных доменов (т.к. поиск может их сократить)
+    if backtracking_search(csp): # Изначальное присваивание
+        csp.restoreall() # Восстановление исходных доменов
     else:
         return (INFINITY, None) # Не удалось удовлетворить строгие ограничения
     best_value, best_assignment = csp.preferences(), csp.infer_assignment()

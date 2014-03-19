@@ -4,9 +4,9 @@ from collections import defaultdict
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
-from csp import TimetablePlanner2, assign_groups
+from csp import TimetablePlanner2
 from utils import INFINITY, WEEK
-from algorithms import backtracking_search, combined_local_search, weight
+from algorithms import backtracking_search, weighted_search, weight
 
 
 class ScheduleEntry(QWidget):
@@ -29,6 +29,7 @@ class ScheduleEntry(QWidget):
         layout.addWidget(s1)
         layout.addLayout(labelGrid)
         layout.addWidget(s2)
+        layout.setSpacing(0)
         self.setMinimumWidth(180)
         self.setMaximumWidth(180)
         self.setLayout(layout)
@@ -36,7 +37,7 @@ class ScheduleEntry(QWidget):
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
         pen = QPen(QColor(0, 0, 0))
-        pen.setWidth(2)
+        pen.setWidth(1)
         painter.save()
         brush = QBrush(QColor(128, 128, 128) if self.empty else QColor(255, 255, 255))
         painter.setBrush(brush)
@@ -67,7 +68,8 @@ class WeekSuite(QWidget):
                 layout.addWidget(entry, x, y)
                 self.widgetMap[(day, hour)] = entry
                 y += 1
-        layout.setSpacing(1)
+        layout.setHorizontalSpacing(0)
+        layout.setContentsMargins(0,0,0,0)
         self.setMaximumWidth(layout.itemAtPosition(0, 0).widget().maximumWidth()*6)
         self.setLayout(layout)
 
@@ -91,30 +93,31 @@ class TimetableWindow(QDialog):
         self.lblCurrentDay = QLabel(self.toFullName(self.currentDay))
         self.btnNext = QPushButton('Вперед >')
         self.btnPrev = QPushButton('< Назад')
-        #self.btnGen = QPushButton('Сгенерировать')
         self.btnNext.setFlat(True)
         self.btnPrev.setFlat(True)
-        #self.btnGen.setFlat(True)
         self.weekSuits = []
-        layout = QGridLayout()
-        layout.addWidget(self.lblCurrentDay, 0, 0, 1, 2)
+        mainLayout = QVBoxLayout()
+        mainLayout.addWidget(self.lblCurrentDay)
+        gridLayout = QGridLayout()
         row = 1
         for group, timetable in sorted(scheduleentries.items(), key=lambda x: x[0].name):
             wgt = WeekSuite(group, timetable)
             self.weekSuits.append(wgt)
             wgt.showDay(self.currentDay)
-            layout.addWidget(QLabel(group.name), row, 0)
-            layout.addWidget(wgt, row, 1)
+            gridLayout.addWidget(QLabel(group.name), row, 0)
+            gridLayout.addWidget(wgt, row, 1)
             row += 1
+        gridLayout.setVerticalSpacing(0)
+        s = QSplitter(Qt.Vertical)
         navigator = QHBoxLayout()
         navigator.addWidget(self.btnPrev)
         navigator.addWidget(self.btnNext)
-        layout.addLayout(navigator, row, 0, 1, 2)
-        layout.setVerticalSpacing(0)
-        self.setLayout(layout)
+        mainLayout.addLayout(gridLayout)
+        mainLayout.addWidget(s)
+        mainLayout.addLayout(navigator)
+        self.setLayout(mainLayout)
         self.btnNext.clicked.connect(self.nextDay)
         self.btnPrev.clicked.connect(self.prevDay)
-        #self.btnGen.clicked.connect(self.generateTimetable)
 
     def nextDay(self):
         self.dayIndex += 1
@@ -146,34 +149,18 @@ class TimetableWindow(QDialog):
         }[day])
 
 
-if __name__ == '__main__':
-    import time
+def main():
     app = QApplication(sys.argv)
     ttp = TimetablePlanner2(weight_estimate=weight)
     ttp.setup_constraints()
     ttp.setup_preferences()
-    best_value, best_assignment = INFINITY, None
-    max_restarts = 1
-    for i in range(max_restarts):
-        t = time.time()
-        v, a = combined_local_search(ttp, max_steps=250)
-        t = time.time() - t
-        print('time elapsed: ', t)
-        if v < best_value:
-            best_value, best_assignment = v, a
-        print(v)
-        if i != max_restarts - 1:
-            for v in ttp.variables: v.unassign(); ttp.restoreall()
-    print('best: ', best_value)
-    a = best_assignment
+    value, assignment = weighted_search(ttp, max_steps=250)
+    if value == INFINITY:
+        return
+    print('solution weight: ', value)
     d = defaultdict(dict)
-    b = assign_groups(a)
-    for var in b:
-        ((day, hour), room), groupset = b[var]
-        if groupset:
-            group = groupset.pop()
-        else:
-            continue
+    for var in assignment:
+        ((day, hour), room), group = var.curr_value, var.listeners.pop()
         t = (var.discipline, var.lecturer_name, room.name)
         try:
             d[group][day][hour] = t
@@ -182,3 +169,7 @@ if __name__ == '__main__':
     wgt = TimetableWindow(d)
     wgt.show()
     app.exec_()
+
+
+if __name__ == '__main__':
+    main()

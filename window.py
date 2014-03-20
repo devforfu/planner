@@ -6,7 +6,7 @@ from PyQt4.QtGui import *
 
 from csp import TimetablePlanner2
 from utils import INFINITY, WEEK
-from algorithms import backtracking_search, weighted_search, weight
+from algorithms import backtracking_search, weighted_search, weight_function
 
 
 class ScheduleEntry(QWidget):
@@ -151,7 +151,7 @@ class TimetableWindow(QDialog):
 
 def main():
     app = QApplication(sys.argv)
-    ttp = TimetablePlanner2(weight_estimate=weight)
+    ttp = TimetablePlanner2(weight_estimate=weight_function)
     ttp.setup_constraints()
     ttp.setup_preferences()
     value, assignment = weighted_search(ttp, max_steps=250)

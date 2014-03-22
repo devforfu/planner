@@ -34,21 +34,21 @@ def createConnection(host:str, user:str, password:str, dbname=None) -> QSqlDatab
 
 
 class UniversityDatabase:
+    """ Класс осуществляет извлечение данных из БД приложения. """
     def __init__(self, data:ConnData = ConnData('localhost', 'work', '123', 'univercity')):
-        try:
-            self.db = createConnection(*data)
-        except ConnectionError as e:
-            print(e)
+        self.db = createConnection(*data)
         self.query = QSqlQuery(self.db)
 
 
     def get_all_disciplines(self):
+        """ Возвращает последовательность из всех дисциплин, содержащихся в БД. """
         self.query.exec("select id, name from disciplines")
         while self.query.next():
             yield (self.query.value(0), self.query.value(1))
 
 
     def get_all_exercises(self):
+        """ Возвращает список всех запланированных занятий, хранящихся в БД. """
         self.query.exec("select e.id, d.id, e.type_id, d.name, e.hours from "
                         "(exercises e join disciplines d on e.discipline_id = d.id)")
         while self.query.next():
@@ -56,6 +56,9 @@ class UniversityDatabase:
 
 
     def get_disciplines_for_group(self, ids:tuple = (), semesters:tuple = ()):
+        """ Возвращает словарь с дисциплинами, преподаваемыми в заданные семестры для заданного
+            множества академических групп.
+        """
         query_text = "select id, speciality_id, name, kurs, size from groups "
         if ids:
             query_text += "where id in {}".format(ids + (0,))
@@ -74,6 +77,7 @@ class UniversityDatabase:
 
 
     def get_teacher_hours(self, ids:tuple = (), semesters:tuple = ()):
+        """ Возвращает словарь с информацией о преподавателях и проводимыми ими занятиями. """
         query_text = "select id, firstname, middlename, lastname from teachers "
         if ids:
             query_text += "where id in ".format(ids + (0,))
@@ -93,6 +97,7 @@ class UniversityDatabase:
 
 
     def get_teachers_hours_for_institute(self, inst_id:int = None, semesters:tuple = ()):
+        """ Возвращает информацию о занятиях всех преподавателей, работающих в институте. """
         query_text = "select id from teachers where department_id in "
         if inst_id is None:
             query_text += "(select id from departments)"
@@ -104,19 +109,28 @@ class UniversityDatabase:
 
 
     def get_rooms_in_building(self, building_id:int):
+        """ Возвращает множество аудиторий, расположенных в заданном здании. """
         self.query.exec("select id, name, process_type_id, size from rooms "
                         "where building_id = {}".format(building_id))
         while self.query.next():
             yield Room(*(self.query.value(x) for x in range(4)))
 
 
-
-if __name__ == '__main__':
+def conntest():
     import utils
-    database = UniversityDatabase()
+    try:
+        database = UniversityDatabase()
+    except ConnectionError as e:
+        print(e)
     a = database.get_disciplines_for_group()
     # utils.print_dictionary(a)
     b = database.get_teacher_hours()
     # utils.print_dictionary(b)
     for e in database.get_all_exercises(): print(e)
+
+
+if __name__ == '__main__':
+    conntest()
+
+
 

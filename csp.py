@@ -362,8 +362,10 @@ class TimetablePlanner2(CSP):
     def preferences(self):
         """ Возвращает вес найденного решения. Чем меньше вес, тем меньшее количество нестрогих
             ограничений (предпочтений) было нарушено, и соответственно, тем "оптимальнее"
-            (в смысле, определяемом функцией weight_estimate) решение.
+            (в смысле, определяемом объектами класса Preference и функцией weight_estimate) решение.
         """
+        for v in self.variables:
+            v.weight = sum(p.check(v) for p in v.preferences)
         return self.weight_estimate(self.variables)
 
     def infer_assignment(self):

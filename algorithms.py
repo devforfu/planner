@@ -99,8 +99,6 @@ def weight(vars):
         общем контексте. Суммарный вес решения состоит из суммы весов всех входящих в него пере-
         менных. Чем больше вес, тем больше предпочтений не выполнено.
     """
-    for v in vars:
-        v.weight = sum(p.check(v) for p in v.preferences)
     # формирование списка групп переменных, которым присвоен один и тот же день
     grouped_by_day = [[v for v in vars if v.day == day] for day in WEEK]
     # ограничение количества занятий в день по одному предмету
@@ -116,14 +114,6 @@ def weight(vars):
             acc += item
         for var in acc: # назначения веса при наличии более 3 занятий в день по некоторому предмету
             var.weight += 75
-
-        # keyfunc = lambda x: getattr(x, 'lecturer_name')
-        # grouped_by_exercise, acc = [], []
-        # group = sorted(group, key=keyfunc)
-        # for _, g in itertools.groupby(group, key=keyfunc):
-        #     grouped_by_exercise.append(list(g))
-        #
-        # input('...')
     return bounded_sum(v.weight for v in vars)
 
 
@@ -146,7 +136,7 @@ def backtracking_search(csp: CSP,
                 removed = [(var, x) for x in var.curr_domain if x != value]
                 var.curr_domain = [value]
                 # распространение ограничений может быть пропущено, т.е. можно
-                # определить inference = lambda _,_,_: return True
+                # определить inference = lambda a,b,c: return True
                 if inference(var, csp, removed):
                     result = Backtrack()
                     if result:

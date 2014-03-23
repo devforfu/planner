@@ -300,9 +300,9 @@ class TimetablePlanner2(CSP):
         многие реальные факторы. Использует глобальные функции для получения значений из БД
         приложения. В дальнейшем конструктор класса будет преобразован.
     """
-    def __init__(self, weight_estimate=lambda x: 0):
+    def __init__(self, global_preferences=lambda x: 0):
         super().__init__()
-        self.weight_estimate = weight_estimate
+        self.global_preferences = global_preferences
         # Получение вымышленных данных из БД приложения
         lecturer_hours = get_lecturer_hours()
         room_domains = get_room_domains()
@@ -366,16 +366,18 @@ class TimetablePlanner2(CSP):
         """
         for v in self.variables:
             v.weight = sum(p.check(v) for p in v.preferences)
-        return self.weight_estimate(self.variables)
+        self.global_preferences(self.variables)
+        return bounded_sum(v.weight for v in self.variables)
 
     def infer_assignment(self):
         return dict((Xi, Xi.curr_value) for Xi in self.variables
                     if Xi.isassigned())
 
     def display(self, assignment:dict = None, days:list = None, hours:list = None):
+        """ Выводит на экран отформатированный список назначений. """
         a = assignment if assignment is not None else self.infer_assignment()
         if days:
-            a = { x:a[x] for x in a if a[x][0].day in days }
+            a = {x:a[x] for x in a if a[x][0].day in days}
         if hours:
-            a = { x:a[x] for x in a if a[x][0].hour in hours }
-        print(len(a)); print_dictionary(a)
+            a = {x:a[x] for x in a if a[x][0].hour in hours}
+        print_dictionary(a)

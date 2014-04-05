@@ -1,0 +1,101 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+Нагрузка по дисциплинам в течение семестра. Предполагается 16 недель в семестре.
+Легенда для id значений (на 5 апреля 2014 года):
+    1: Аудитория
+    3: Лаборатория - механика
+    4: Лаборатория - оптика
+    5: Лаборатория - кв. мех.
+    6: Лаборатория - схемотехника
+    7: Лаборатория - микропроцессоры
+    8: Компьютерный класс
+    9: Лаборатория - телевидение
+   10: Лаборатория - радиотехника
+   11: Лаборатория - электричество
+-->
+<university>
+<load speciality_id="1" kurs="1" semestr="1"> <!-- Специальность: Физика (1 семестр, 1курс) -->
+    <discipline name="Физика I">
+        <exercise process_type_id="1" is_practise="0" hours="32" /> <!-- 32 часа лекций в семестр    -->
+        <exercise process_type_id="1" is_practise="1" hours="16" /> <!-- 16 часов практики в семестр -->
+        <exercise process_type_id="3" hours="16" />                 <!-- 16 часов лабораторных работ -->
+    </discipline>
+    <discipline name="Мат. ан. I">
+        <exercise process_type_id="1" is_practise="0" hours="32" />
+        <exercise process_type_id="1" is_practise="1" hours="16" />
+    </discipline>
+    <discipline name="Электротехника I">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="1" is_practise="1" hours="16" />
+        <exercise process_type_id="13" hours="8" />
+    </discipline>
+    <discipline name="Мод. систем">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="8" hours="16" />
+    </discipline>  
+    <discipline name="Информатика">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="8" hours="16" />
+    </discipline>
+    <discipline name="История">
+        <exercise process_type_id="1" is_practise="0" hours="8" />
+        <exercise process_type_id="1" is_practise="1" hours="8" />
+    </discipline>    
+</load>
+<load speciality_id="2" kurs="1" semestr="1"> <!-- Специальность: Радиосвязь (1 семестр, 1курс) -->
+    <discipline name="Физика I">
+        <exercise process_type_id="1" is_practise="0" hours="32" />
+        <exercise process_type_id="1" is_practise="1" hours="16" />
+        <exercise process_type_id="3" hours="16" />
+    </discipline>
+    <discipline name="Мат. ан. I">
+        <exercise process_type_id="1" is_practise="0" hours="32" />
+        <exercise process_type_id="1" is_practise="1" hours="16" />
+    </discipline>
+    <discipline name="Электротехника I">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="1" is_practise="1" hours="16" />
+        <exercise process_type_id="13" hours="8" />
+    </discipline>
+    <discipline name="Мод. систем">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="8" hours="16" />
+    </discipline>   
+    <discipline name="Информатика">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="8" hours="16" />
+    </discipline>    
+    <discipline name="История">
+        <exercise process_type_id="1" is_practise="0" hours="8" />
+        <exercise process_type_id="1" is_practise="1" hours="8" />
+    </discipline>     
+</load>
+<load speciality_id="3" kurs="1" semestr="1"> <!-- Специальность: Программное обеспечение (1 семестр, 1курс) -->
+    <discipline name="Физика I">
+        <exercise process_type_id="1" is_practise="0" hours="32" />
+        <exercise process_type_id="1" is_practise="1" hours="16" />
+        <exercise process_type_id="3" hours="16" />
+    </discipline>
+    <discipline name="Мат. ан. I">
+        <exercise process_type_id="1" is_practise="0" hours="32" />
+        <exercise process_type_id="1" is_practise="1" hours="16" />
+    </discipline>
+    <discipline name="Электротехника I">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="1" is_practise="1" hours="16" />
+        <exercise process_type_id="13" hours="8" />
+    </discipline>
+    <discipline name="Мод. систем">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="8" hours="16" />
+    </discipline>   
+    <discipline name="Информатика">
+        <exercise process_type_id="1" is_practise="0" hours="16" />
+        <exercise process_type_id="8" hours="16" />
+    </discipline>    
+    <discipline name="История">
+        <exercise process_type_id="1" is_practise="0" hours="8" />
+        <exercise process_type_id="1" is_practise="1" hours="8" />
+    </discipline>     
+</load>
+</university>

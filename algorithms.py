@@ -165,7 +165,6 @@ def min_conflicts(csp: CSP, max_steps=2000):
         var.assign(val)
     return None
 
-
 def weighted_search(csp: CSP,
                     select_variable=most_weight_variable,
                     select_domain_value=weighted_argmin_conflicts,
@@ -175,7 +174,12 @@ def weighted_search(csp: CSP,
         очередной переменной. Используется для тестирования реализованных алгоритмов и записывает в
         файл данные для построения графика зависимости значения веса решения от номера итерации.
     """
-    f = open(filename, 'w')
+    global id
+    f = open(filename, 'a')
+    f.write('# name: matrix{}\n'.format(10))
+    f.write('# type: matrix\n')
+    f.write('# rows: 250\n')
+    f.write('# columns: 2\n')
     if backtracking_search(csp): # Изначальное присваивание
         csp.restoreall() # Восстановление исходных доменов
     else:
@@ -193,4 +197,6 @@ def weighted_search(csp: CSP,
             else:
                 f.write('{} {}\n'.format(i, best_value))
         for Y in violations: Y.unassign()
+    f.write('\n\n')
+    f.close()
     return (best_value, best_assignment)

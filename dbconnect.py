@@ -1,3 +1,4 @@
+import xml.etree.ElementTree as ET
 from PyQt4.QtSql import *
 from collections import namedtuple, defaultdict
 
@@ -8,7 +9,9 @@ class IncorrectOrder(Exception): pass
 ConnData = namedtuple('ConnData', ['host', 'user', 'password', 'dbname'])
 Teacher = namedtuple('Teacher', ['id', 'firstname', 'middlename', 'lastname'])
 Group = namedtuple('Group', ['id', 'sid', 'name', 'kurs', 'size'])
-Exercise = namedtuple('Exercise', ['id', 'did', 'type', 'name', 'hours'])
+# Exercise = namedtuple('Exercise', ['id', 'did', 'type', 'name', 'hours'])
+# Exercise = namedtuple('Exercise', ['did', 'name', 'type', 'ispractice', 'hours'])
+
 Room = namedtuple('Room', ['id', 'name', 'type', 'size'])
 
 
@@ -35,7 +38,7 @@ def createConnection(host:str, user:str, password:str, dbname=None) -> QSqlDatab
 
 class UniversityDatabase:
     """ Класс осуществляет извлечение данных из БД приложения. """
-    def __init__(self, data:ConnData = ConnData('localhost', 'work', '123', 'univercity')):
+    def __init__(self, data:ConnData = ConnData('localhost', 'work', '123', 'university_v')):
         self.db = createConnection(*data)
         self.query = QSqlQuery(self.db)
 
@@ -47,7 +50,7 @@ class UniversityDatabase:
             yield (self.query.value(0), self.query.value(1))
 
 
-    def get_all_exercises(self):
+    def get_all_exercises(self): # TODO: необходима правка
         """ Возвращает список всех запланированных занятий, хранящихся в БД. """
         self.query.exec("select e.id, d.id, e.type_id, d.name, e.hours from "
                         "(exercises e join disciplines d on e.discipline_id = d.id)")
@@ -76,24 +79,27 @@ class UniversityDatabase:
         return group_disc
 
 
-    def get_teacher_hours(self, ids:tuple = (), semesters:tuple = ()):
-        """ Возвращает словарь с информацией о преподавателях и проводимыми ими занятиями. """
-        query_text = "select id, firstname, middlename, lastname from teachers "
+    def get_teacher_hours(self, ids:tuple = (), semesters:tuple = ()): # TODO: необходима правка
+        """ Возвращает словарь с информацией о преподавателях и проводимых ими занятиями. """
+        query_text = "select id, firstname, middlename, lastname from teachers"
         if ids:
             query_text += "where id in ".format(ids + (0,))
         teacher_hours = defaultdict(set)
         self.query.exec(query_text)
         while self.query.next():
             t = Teacher(*(self.query.value(x) for x in range(4)))
-            query_text = "select e.id, d.id, e.type_id, d.name, e.hours from " \
-                         "(exercises e join disciplines d on e.discipline_id = d.id) " \
-                         "where teacher_id = {} ".format(t.id)
-            if semesters:
-                query_text += "and semestr in {}".format(semesters + (0,))
-            q = QSqlQuery(query_text)
-            while q.next():
-                teacher_hours[t].add(Exercise(*(q.value(x) for x in range(5))))
-        return teacher_hours
+            query_text = "select id, name, plan from disciplines " \
+                         "where teacher_id"
+
+        #     query_text = "select e.id, d.id, e.type_id, d.name, e.hours from " \
+        #                  "(exercises e join disciplines d on e.discipline_id = d.id) " \
+        #                  "where teacher_id = {} ".format(t.id)
+        #     if semesters:
+        #         query_text += "and semestr in {}".format(semesters + (0,))
+        #     q = QSqlQuery(query_text)
+        #     while q.next():
+        #         teacher_hours[t].add(Exercise(*(q.value(x) for x in range(5))))
+        # return teacher_hours
 
 
     def get_teachers_hours_for_institute(self, inst_id:int = None, semesters:tuple = ()):

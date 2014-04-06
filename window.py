@@ -6,7 +6,7 @@ from PyQt4.QtGui import *
 
 from csp import TimetablePlanner2
 from utils import INFINITY, WEEK
-from algorithms import backtracking_search, weighted_search, weight_function
+from algorithms import backtracking_search, weighted_search, weight_function, argmin_conflicts
 
 
 class ScheduleEntry(QWidget):
@@ -16,18 +16,17 @@ class ScheduleEntry(QWidget):
         self.empty = not any(args)
         self.lblDiscipline = QLabel(discipline)
         self.lblDiscipline.setAlignment(Qt.AlignCenter)
-        self.lblLecturer = QLabel(lecturer)
-        self.lblRoom = QLabel(room)
+        text = '' if self.empty else ' / '.join([lecturer, room])
+        self.lblLecturerAndRoom = QLabel(text)
         s1, s2 = QSplitter(self), QSplitter(self)
 
-        labelGrid = QGridLayout()
-        labelGrid.addWidget(self.lblDiscipline, 0, 0, 1, 2)
-        labelGrid.addWidget(self.lblLecturer, 1, 0)
-        labelGrid.addWidget(self.lblRoom, 1, 1)
+        labelLayout = QVBoxLayout()
+        labelLayout .addWidget(self.lblDiscipline)
+        labelLayout .addWidget(self.lblLecturerAndRoom)
 
         layout = QHBoxLayout(self)
         layout.addWidget(s1)
-        layout.addLayout(labelGrid)
+        layout.addLayout(labelLayout)
         layout.addWidget(s2)
         layout.setSpacing(0)
         self.setMinimumWidth(180)
@@ -150,11 +149,19 @@ class TimetableWindow(QDialog):
 
 
 def main():
+    import random
+    def rand(X, csp):
+        csp.preferences()
+        return random.choice(X.curr_domain)
+
     app = QApplication(sys.argv)
     ttp = TimetablePlanner2(weight_estimate=weight_function)
     ttp.setup_constraints()
     ttp.setup_preferences()
-    value, assignment = weighted_search(ttp, max_steps=250)
+    backtracking_search(ttp)
+    assignment = ttp.infer_assignment()
+    value, assignment = weighted_search(ttp, max_steps=250, filename='random',
+                                        select_domain_value=argmin_conflicts)
     if value == INFINITY:
         return
     print('solution weight: ', value)

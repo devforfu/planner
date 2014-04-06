@@ -2,7 +2,7 @@ import itertools, re, random
 from functools import reduce
 
 from dbconnect import *
-from utils import WEEK, INFINITY
+from utils import WEEK, INFINITY, print_dictionary
 
 database = UniversityDatabase()
 TimeSlot = namedtuple('TimeSlot', ['day', 'hour']) # timeslot in schedule
@@ -21,7 +21,7 @@ def get_room_domains():
     rooms = list(database.get_rooms_in_building(4))
     for exercise in database.get_all_exercises():
         new_domain = set()
-        for _ in range(random.randint(2,4)):
+        for _ in range(random.randint(2, 4)):
             new_domain.add(random.choice(rooms))
         domains[exercise].update(new_domain)
     return domains
@@ -379,3 +379,12 @@ class TimetablePlanner2(CSP):
         if hours:
             a = { x:a[x] for x in a if a[x][0].hour in hours }
         print(len(a)); print_dictionary(a)
+
+
+def selftest():
+    print_dictionary(get_group_disciplines())
+    # print_dictionary(get_lecturer_hours())
+    print_dictionary(get_room_domains())
+
+if __name__ == '__main__':
+    selftest()

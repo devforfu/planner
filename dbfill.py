@@ -35,8 +35,18 @@ def fill_disciplines(filename: str='example.xml'):
                 raise DatabaseError(query.lastError().text())
 
 
+def get_data(discipline: int):
+    tree = RT.parse('example.xml')
+    for l in tree.getroot():
+        for d in l.findall('discipline'):
+            for e in d.findall('exercise'):
+                print(isinstance(e.attrib['process_type_id'], str))
+
+
+
 if __name__ == '__main__':
     try:
-        fill_disciplines()
+        # fill_disciplines()
+        get_data(discipline=3)
     except DatabaseError as err:
         print('Error occurred: ', err)

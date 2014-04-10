@@ -1,75 +1,8 @@
 import itertools, re, random
 from functools import reduce
 
-from dbconnect import *
+from variable import Variable, VariableCreator
 from utils import WEEK, INFINITY, print_dictionary
-
-database = UniversityDatabase()
-TimeSlot = namedtuple('TimeSlot', ['day', 'hour']) # timeslot in schedule
-
-
-def get_group_disciplines():
-    return database.get_disciplines_for_group()
-
-
-def get_lecturer_hours():
-    return database.get_teacher_hours()
-
-
-def get_room_domains():
-    domains = defaultdict(set)
-    rooms = list(database.get_rooms_in_building(4))
-    for exercise in database.get_all_exercises():
-        new_domain = set()
-        for _ in range(random.randint(2, 4)):
-            new_domain.add(random.choice(rooms))
-        domains[exercise].update(new_domain)
-    return domains
-
-
-class Variable:
-    """ Базовый класс для представления переменной в задачах удовлетворения ограничений
-        (CSP - constraint satisfaction problems). Предоставляет интерфейс, используемый в
-        дальнейшем алгоритмами поиска.
-
-        Атрибуты:
-            init_domain: Возвращает исходное множество допустимых значений (readonly).
-            curr_value: Текущее значение переменной (readonly).
-            curr_domain: Возвращает текущее множество допустимых значений.
-            neighbors: Список переменных, которые связаны с данной ограничениями.
-    """
-    def __init__(self, domain:list, neighbors=None):
-        self.__init_domain = domain
-        self.__curr_value = None
-        self.curr_domain = domain
-        self.neighbors = [] if neighbors is None else neighbors
-
-    @property
-    def init_domain(self):
-        return self.__init_domain
-
-    @property
-    def curr_value(self):
-        return self.__curr_value
-
-    def assign(self, value):
-        assert(value in self.curr_domain)
-        self.__curr_value = value
-
-    def unassign(self):
-        self.__curr_value = None
-
-    def isassigned(self):
-        return self.curr_value is not None
-
-    def __eq__(self, other):
-        return self.curr_value == other.curr_value
-
-    def __hash__(self):
-        return id(self)
-
-    def __str__(self):
-        return self.name
 
 
 class CSP:
@@ -158,113 +91,6 @@ class CSP:
         return self.__str__()
 
 
-class ScheduleVariable(Variable):
-    """ Класс используется в CSP, связанной с планированием расписания. Доменом каждой пере-
-        менной является список кортежей вида (timeslot, room), где timeslot - именованный кортеж,
-        хранящий день недели и номер пары, room - аудитория, в которой проходит занятие.Помимо
-        домена и текущего значения каждая переменная хранит дополнительные сведения, исполь-
-        зуемые для формирования расписания.
-
-        Атрибуты:
-            lecturer: Именованный кортеж с данными преподавателя (readonly).
-            exercise: Именованный кортеж со сведениями о проводимом занятии (readonly).
-            listeners: Множество групп, которые содержат занятие exercise в своем учебном
-                плане. Предполагается использование множества при планировании потоковых
-                лекций (readonly).
-            num: Номер занятия.
-            key: Идентификатор переменной.
-            preferences: Список нестрогих ограничений (предпочтений).
-            weight: Вес переменной; чем больше значение, тем больше предпочтений нарушено.
-    """
-    # все возможные значения времени проведения занятий (день - номер пары)
-    # на данный момент предполагается максимум 6 учебных дней и 6 пар в день
-    timeslots = [TimeSlot(d, h) for d in WEEK for h in range(1, 7)]
-
-    def __init__(self, teacher, exercise, listeners, possible_rooms, num=1, preferences=None):
-        super().__init__(domain=[(t, r) for t in ScheduleVariable.timeslots
-                                        for r in possible_rooms])
-        self.__teacher = teacher
-        self.__exercise = exercise
-        self.__listeners = listeners
-        self.__possible_rooms = possible_rooms
-        self.__num = num
-        self.__key = (self.teacher.id, self.exercise.id, num)
-        self.preferences = [] if preferences is None else preferences
-        self.weight = None
-
-    @property
-    def type(self):
-        return self.__exercise.type
-
-    @property
-    def teacher(self):
-        return self.__teacher
-
-    @property
-    def exercise(self):
-        return self.__exercise
-
-    @property
-    def discipline(self):
-        return self.__exercise.name
-
-    @property
-    def count(self):
-        return self.__num
-
-    @property
-    def key(self):
-        return self.__key
-
-    @property
-    def day(self):
-        return self.curr_value[0].day
-
-    @property
-    def hour(self):
-        return self.curr_value[0].hour
-
-    @property
-    def room(self):
-        return self.curr_value[1]
-
-    @property
-    def lecturer_name(self):
-        return ' '.join([
-            self.__teacher.firstname,
-            self.__teacher.middlename,
-            self.__teacher.lastname])
-
-    @property
-    def listeners(self):
-        return self.__listeners
-
-    @property
-    def possible_rooms(self):
-        return self.__possible_rooms
-
-    def samelecturers(self, other):
-        """ Проверяет, относятся ли переменные к нагрузке одного и того же преподавателя """
-        return self.teacher.id == other.teacher.id
-
-    def samerooms(self, other):
-        """ Проверяет, имеются ли совпадения в списках допустимых аудиторий у двух переменных """
-        return self.__possible_rooms.intersection(other.possible_rooms)
-
-    def samelisteners(self, other):
-        """ Возвращает пересечение множеств listeners двух переменных """
-        return self.listeners.intersection(other.listeners)
-
-    def __hash__(self):
-        return hash(self.key)
-
-    def __str__(self):
-        key = str(self.key)
-        discipline = self.exercise.name
-        process = 'process: {}'.format(self.exercise.type)
-        return ' / '.join([key, self.lecturer_name, discipline, process])
-
-
 class Preference:
     """ Класс, используемый для представления нестрогих ограничений, накладываемых на значения
         переменных. Нарушением предпочтения считается принятие переменнойзначения, не содержащегося
@@ -282,7 +108,7 @@ class Preference:
     def __str__(self):
         return self.string
 
-    def check(self, variable):
+    def check(self, variable: Variable):
         """ Проверяет удовлетворение предпочтений переменной variable. При этом, в ходе проверки
             производится сопоставление отдельных элементов кортежа (день, час, аудитория),
             являющегося текущим значением переменной, с заданными для них доменами.
@@ -296,26 +122,28 @@ class Preference:
 
 
 class TimetablePlanner2(CSP):
+    # FIXME: конструктор более неактуален. Планировщик в данный момент не функционирует.
     """ Класс планировщика расписаний как один из случаев решения CSP. На данном этапе не учитывает
         многие реальные факторы. Использует глобальные функции для получения значений из БД
         приложения. В дальнейшем конструктор класса будет преобразован.
     """
-    def __init__(self, weight_estimate=lambda x: 0):
+    def __init__(self, creator: VariableCreator, weight_estimate=lambda x: 0):
         super().__init__()
         self.weight_estimate = weight_estimate
-        # Получение вымышленных данных из БД приложения
-        lecturer_hours = get_lecturer_hours()
-        room_domains = get_room_domains()
-        group_disc = get_group_disciplines()
-        # Формирование списка переменных, используемых при решении задачи планирования
-        for lecturer in sorted(lecturer_hours):
-            exercises_set = lecturer_hours[lecturer]
-            for ex in exercises_set:
-                for n in range(int(ex.hours)): # По одной переменной на каждое занятие
-                    possible_rooms = set(room_domains[ex])
-                    listeners = {g for g, s in group_disc.items()
-                                 if ex.did in [t[0] for t in s]}
-                    self.add_variable(ScheduleVariable(lecturer, ex, listeners, possible_rooms, n+1))
+        self.variables = list(creator.create_variables())
+        # # Получение вымышленных данных из БД приложения
+        # lecturer_hours = get_lecturer_hours()
+        # room_domains = get_room_domains()
+        # group_disc = get_group_disciplines()
+        # # Формирование списка переменных, используемых при решении задачи планирования
+        # for lecturer in sorted(lecturer_hours):
+        #     exercises_set = lecturer_hours[lecturer]
+        #     for ex in exercises_set:
+        #         for n in range(int(ex.hours)): # По одной переменной на каждое занятие
+        #             possible_rooms = set(room_domains[ex])
+        #             listeners = {g for g, s in group_disc.items()
+        #                          if ex.did in [t[0] for t in s]}
+        #             self.add_variable(ScheduleVariable(lecturer, ex, listeners, possible_rooms, n+1))
 
     def setup_constraints(self):
         """ Устанавливает строгие ограничения на значения переменных """
@@ -381,10 +209,5 @@ class TimetablePlanner2(CSP):
         print(len(a)); print_dictionary(a)
 
 
-def selftest():
-    print_dictionary(get_group_disciplines())
-    # print_dictionary(get_lecturer_hours())
-    print_dictionary(get_room_domains())
-
 if __name__ == '__main__':
-    selftest()
+    pass # selftest()

@@ -5,6 +5,8 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
 from csp import TimetablePlanner2
+from dbconnect import UniversityDatabase
+from variable import VariableCreator
 from utils import INFINITY, WEEK
 from algorithms import backtracking_search, weighted_search, weight_function, argmin_conflicts
 
@@ -155,7 +157,9 @@ def main():
         return random.choice(X.curr_domain)
 
     app = QApplication(sys.argv)
-    ttp = TimetablePlanner2(weight_estimate=weight_function)
+    database = UniversityDatabase()
+    creator = VariableCreator(database)
+    ttp = TimetablePlanner2(creator=creator, weight_estimate=weight_function)
     ttp.setup_constraints()
     ttp.setup_preferences()
     backtracking_search(ttp)
@@ -163,6 +167,7 @@ def main():
     value, assignment = weighted_search(ttp, max_steps=250, filename='random',
                                         select_domain_value=argmin_conflicts)
     if value == INFINITY:
+        print('CSP failed: solution not found!')
         return
     print('solution weight: ', value)
     d = defaultdict(dict)
